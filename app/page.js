@@ -152,6 +152,18 @@ export default function Home() {
     }
 
     if (isRegister) {
+      const { data: existingAdmin } = await supabase
+        .from("admins")
+        .select("email")
+        .eq("email", email)
+        .maybeSingle();
+      
+      if (existingAdmin) {
+        setError("Este email ya está registrado como administrador. Usa el login de admin.");
+        setAuthLoading(false);
+        return;
+      }
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
       if (signUpError) {
         setError(signUpError.message);

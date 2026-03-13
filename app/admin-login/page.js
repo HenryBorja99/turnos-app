@@ -21,6 +21,7 @@ export default function AdminLogin() {
   const [isRegister, setIsRegister] = useState(false);
   const [nombre, setNombre] = useState("");
   const router = useRouter();
+  const [isRecovering, setIsRecovering] = useState(false);
 
   useEffect(() => {
     setCsrfToken(getCsrfToken());
@@ -58,6 +59,18 @@ export default function AdminLogin() {
 
     if (authError) {
       if (isRegister) {
+        const { data: existingProvider } = await supabase
+          .from("proveedores")
+          .select("email")
+          .eq("email", email)
+          .maybeSingle();
+        
+        if (existingProvider) {
+          setError("Este email ya está registrado como proveedor. Usa el login de proveedor.");
+          setLoading(false);
+          return;
+        }
+
         const { error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) {
           setError(signUpError.message);
@@ -140,6 +153,37 @@ export default function AdminLogin() {
     setLoading(false);
   }
 
+  async function handleResetPassword(e) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    if (!email) {
+      setError("Por favor ingresa tu email");
+      setLoading(false);
+      return;
+    }
+
+    const rateCheck = checkRateLimit(loginRateLimiter, email);
+    if (rateCheck.blocked) {
+      setError(`Demasiados intentos. Espera ${rateCheck.remaining} segundos.`);
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/nueva-contrasena`,
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setSuccess("Revisa tu correo para restablecer tu contraseña.");
+    }
+    setLoading(false);
+  }
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -153,14 +197,14 @@ export default function AdminLogin() {
           <p className="auth-subtitle">Login o registro para administradores del sistema</p>
         </div>
 
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: '1.25rem', gap: '0' }}>
+          <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: '1.25rem', gap: '0' }}>
           <button
             type="button"
-            onClick={() => { setIsRegister(false); setError(""); setSuccess(""); }}
+            onClick={() => { setIsRegister(false); setIsRecovering(false); setError(""); setSuccess(""); }}
             style={{
               flex: 1, padding: '0.65rem', background: 'transparent', border: 'none',
-              borderBottom: !isRegister ? '2px solid var(--primary)' : '2px solid transparent',
-              color: !isRegister ? 'var(--primary)' : 'var(--text-muted)',
+              borderBottom: !isRegister && !isRecovering ? '2px solid var(--primary)' : '2px solid transparent',
+              color: !isRegister && !isRecovering ? 'var(--primary)' : 'var(--text-muted)',
               fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', marginBottom: '-2px'
             }}
           >
@@ -168,11 +212,11 @@ export default function AdminLogin() {
           </button>
           <button
             type="button"
-            onClick={() => { setIsRegister(true); setError(""); setSuccess(""); }}
+            onClick={() => { setIsRegister(true); setIsRecovering(false); setError(""); setSuccess(""); }}
             style={{
               flex: 1, padding: '0.65rem', background: 'transparent', border: 'none',
-              borderBottom: isRegister ? '2px solid var(--primary)' : '2px solid transparent',
-              color: isRegister ? 'var(--primary)' : 'var(--text-muted)',
+              borderBottom: isRegister && !isRecovering ? '2px solid var(--primary)' : '2px solid transparent',
+              color: isRegister && !isRecovering ? 'var(--primary)' : 'var(--text-muted)',
               fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', marginBottom: '-2px'
             }}
           >
@@ -192,8 +236,20 @@ export default function AdminLogin() {
           </div>
         )}
 
-        <form onSubmit={handleLogin}>
-          <input type="hidden" name="csrf_token" value={csrfToken} />
+        <form onSubmit={isRecovering ? handleResetPassword : handleLogin}>
+          {!isRecovering && <input type="hidden" name="csrf_token" value={csrfToken} />}
+          {isRecovering && (
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="form-input"
+                placeholder="Digita tu correo electrónico"
+              />
+            </div>
+          )}
           {isRegister && (
             <div className="form-group">
               <label className="form-label">Nombre</label>
@@ -207,27 +263,41 @@ export default function AdminLogin() {
             </div>
           )}
 
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="form-input"
-              placeholder="Digita tu correo electrónico"
-            />
-          </div>
+          {!isRecovering && (
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="form-input"
+                placeholder="Digita tu correo electrónico"
+              />
+            </div>
+          )}
 
-          <div className="form-group">
-            <label className="form-label">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="form-input"
-              placeholder="Digita tu contraseña mínimo 6 caracteres"
-            />
-          </div>
+          {!isRegister && !isRecovering && (
+            <div className="form-group">
+              <label className="form-label">Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="form-input"
+                placeholder="Digita tu contraseña mínimo 6 caracteres"
+              />
+              <button
+                type="button"
+                onClick={() => { setIsRecovering(true); setIsRegister(false); setError(""); setSuccess(""); }}
+                style={{
+                  background: 'none', border: 'none', color: 'var(--primary)',
+                  fontSize: '0.75rem', cursor: 'pointer', padding: 0, marginTop: '0.25rem'
+                }}
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -235,9 +305,21 @@ export default function AdminLogin() {
             className="btn btn-primary"
             style={{ width: '100%', marginTop: '0.5rem' }}
           >
-            {loading ? "Procesando..." : isRegister ? "Registrarse" : "Iniciar Sesión"}
+            {loading ? "Procesando..." : isRegister ? "Registrarse" : isRecovering ? "Enviar enlace" : "Iniciar Sesión"}
           </button>
         </form>
+
+        {isRecovering && (
+          <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={() => { setIsRecovering(false); setError(""); setSuccess(""); }}
+              style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.875rem' }}
+            >
+              ← Volver a iniciar sesión
+            </button>
+          </div>
+        )}
 
         <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
           <Link href="/" style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.875rem' }}>
