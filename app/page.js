@@ -342,15 +342,10 @@ export default function Home() {
                 </span>
               </p>
             ) : !isRegister ? (
-              <p style={{ margin: 0 }}>
+                <p style={{ margin: 0 }}>
                 ¿No tienes cuenta?{" "}
                 <span onClick={() => { setIsRegister(true); setError(""); setSuccess(""); }} className="auth-link">
                   Regístrate gratis
-                </span>
-                <br />
-                <span style={{ display: 'block', marginTop: '0.5rem' }}>
-                  ¿Eres administrador?{" "}
-                  <a href="/admin-login" className="auth-link">Acceso admin</a>
                 </span>
               </p>
             ) : (

@@ -38,6 +38,13 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("turnos");
   const [adminsPendientes, setAdminsPendientes] = useState([]);
   const [proveedoresPendientes, setProveedoresPendientes] = useState([]);
+  const [todosAdmins, setTodosAdmins] = useState([]);
+  const [showCrearAdmin, setShowCrearAdmin] = useState(false);
+  const [nuevoAdminEmail, setNuevoAdminEmail] = useState("");
+  const [nuevoAdminNombre, setNuevoAdminNombre] = useState("");
+  const [nuevoAdminRol, setNuevoAdminRol] = useState("admin");
+  const [creandoAdmin, setCreandoAdmin] = useState(false);
+  const [mensajeCrearAdmin, setMensajeCrearAdmin] = useState({ type: "", text: "" });
   const [recomendacionesGenerales, setRecomendacionesGenerales] = useState("");
   const [imprimiendo, setImprimiendo] = useState(null);
   const router = useRouter();
@@ -152,6 +159,9 @@ export default function AdminPage() {
       if (esSuperadmin(permisos, adminRole) || puedeVer("admins", permisos)) {
         const { data } = await supabase.from("admins").select("*").eq("activo", false);
         setAdminsPendientes(data || []);
+        
+        const { data: todosAdmins } = await supabase.from("admins").select("*").eq("activo", true);
+        setTodosAdmins(todosAdmins || []);
         
         const { data: provs } = await supabase.from("proveedores").select("*").eq("activo", false);
         setProveedoresPendientes(provs || []);
@@ -300,6 +310,81 @@ export default function AdminPage() {
     await supabase.from("proveedores").delete().eq("id", proveedorId);
     const { data } = await supabase.from("proveedores").select("*").eq("activo", false);
     setProveedoresPendientes(data || []);
+  }
+
+  async function crearAdmin(e) {
+    e.preventDefault();
+    if (!permisosActivos.admins) return;
+    
+    setCreandoAdmin(true);
+    setMensajeCrearAdmin({ type: "", text: "" });
+
+    try {
+      const { data: existingAdmin } = await supabase
+        .from("admins")
+        .select("id")
+        .eq("email", nuevoAdminEmail)
+        .maybeSingle();
+      
+      if (existingAdmin) {
+        setMensajeCrearAdmin({ type: "error", text: "Este email ya tiene una cuenta de admin." });
+        setCreandoAdmin(false);
+        return;
+      }
+
+      const { data: existingProvider } = await supabase
+        .from("proveedores")
+        .select("id")
+        .eq("email", nuevoAdminEmail)
+        .maybeSingle();
+      
+      if (existingProvider) {
+        setMensajeCrearAdmin({ type: "error", text: "Este email ya está registrado como proveedor." });
+        setCreandoAdmin(false);
+        return;
+      }
+
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: nuevoAdminEmail,
+        password: Math.random().toString(36).slice(-8) + "A1!"
+      });
+
+      if (signUpError) {
+        setMensajeCrearAdmin({ type: "error", text: signUpError.message });
+        setCreandoAdmin(false);
+        return;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const permisosDefault = nuevoAdminRol === "superadmin" 
+          ? '{"ver": ["turnos", "configuracion", "admins", "checkin", "ingresos", "kpis"], "editar": ["turnos", "configuracion", "admins", "checkin", "ingresos", "kpis"]}'
+          : '{"ver": ["turnos"], "editar": ["turnos"]}';
+
+        await supabase.from("admins").insert({
+          usuario_id: user.id,
+          nombre: nuevoAdminNombre,
+          email: nuevoAdminEmail,
+          rol: nuevoAdminRol,
+          activo: true,
+          permisos: permisosDefault
+        });
+
+        setMensajeCrearAdmin({ type: "success", text: `Admin creado exitosamente. Se envió email a ${nuevoAdminEmail} para establecer contraseña.` });
+        setNuevoAdminEmail("");
+        setNuevoAdminNombre("");
+        setNuevoAdminRol("admin");
+        setShowCrearAdmin(false);
+        
+        const { data: admins } = await supabase.from("admins").select("*").eq("activo", true);
+        setTodosAdmins(admins || []);
+      }
+    } catch (error) {
+      setMensajeCrearAdmin({ type: "error", text: "Error al crear admin: " + error.message });
+    }
+
+    setCreandoAdmin(false);
   }
 
   async function actualizarEstado(turnoId, nuevoEstado) {
@@ -1042,6 +1127,62 @@ export default function AdminPage() {
 
           {activeTab === "admins" && (
             <div className="admins-section">
+              {permisosActivos.admins && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                    <h3>Administradores del Sistema</h3>
+                    <button onClick={() => setShowCrearAdmin(!showCrearAdmin)} className="btn btn-primary btn-sm">
+                      {showCrearAdmin ? "Cancelar" : "+ Nuevo Admin"}
+                    </button>
+                  </div>
+                  
+                  {showCrearAdmin && (
+                    <form onSubmit={crearAdmin} style={{ background: "var(--neutral-light)", padding: "1rem", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                      <div style={{ display: "grid", gap: "0.75rem" }}>
+                        <div>
+                          <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Nombre</label>
+                          <input type="text" value={nuevoAdminNombre} onChange={(e) => setNuevoAdminNombre(e.target.value)} className="form-input" placeholder="Nombre del admin" required />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Email</label>
+                          <input type="email" value={nuevoAdminEmail} onChange={(e) => setNuevoAdminEmail(e.target.value)} className="form-input" placeholder="email@empresa.com" required />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Rol</label>
+                          <select value={nuevoAdminRol} onChange={(e) => setNuevoAdminRol(e.target.value)} className="form-input">
+                            <option value="admin">Admin</option>
+                            <option value="superadmin">Superadmin</option>
+                          </select>
+                        </div>
+                        <button type="submit" disabled={creandoAdmin} className="btn btn-primary">
+                          {creandoAdmin ? "Creando..." : "Crear Admin"}
+                        </button>
+                        {mensajeCrearAdmin.text && (
+                          <div className={`alert ${mensajeCrearAdmin.type === "error" ? "alert-error" : "alert-success"}`}>
+                            {mensajeCrearAdmin.text}
+                          </div>
+                        )}
+                      </div>
+                    </form>
+                  )}
+                  
+                  {todosAdmins.length > 0 && (
+                    <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      {todosAdmins.map((admin) => (
+                        <div key={admin.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem", background: "white", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                          <div>
+                            <strong>{admin.nombre}</strong>
+                            <span style={{ marginLeft: "0.5rem", fontSize: "0.7rem", background: admin.rol === "superadmin" ? "var(--primary)" : "var(--secondary)", color: "white", padding: "0.1rem 0.4rem", borderRadius: "4px" }}>{admin.rol}</span>
+                            <br />
+                            <small style={{ color: "var(--text-muted)" }}>{admin.email}</small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <h3>Admins Pendientes de Aprobación</h3>
               {adminsPendientes.length === 0 ? (
                 <p className="empty-description" style={{ marginTop: "1rem" }}>No hay solicitudes de acceso pendientes.</p>

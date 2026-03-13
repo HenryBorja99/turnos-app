@@ -17,15 +17,32 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [isRegister, setIsRegister] = useState(false);
   const [nombre, setNombre] = useState("");
   const router = useRouter();
   const [isRecovering, setIsRecovering] = useState(false);
 
   useEffect(() => {
-    setCsrfToken(getCsrfToken());
-  }, []);
+    async function checkSession() {
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (s) {
+        const { data: adminData } = await supabase
+          .from("admins")
+          .select("activo")
+          .eq("usuario_id", s.user.id)
+          .maybeSingle();
+        
+        if (adminData && adminData.activo) {
+          router.push("/admin");
+          return;
+        }
+      }
+      setCsrfToken(getCsrfToken());
+      setLoading(false);
+    }
+    checkSession();
+  }, [router]);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -182,6 +199,14 @@ export default function AdminLogin() {
       setSuccess("Revisa tu correo para restablecer tu contraseña.");
     }
     setLoading(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-main)' }}>
+        <div className="spinner"></div>
+      </div>
+    );
   }
 
   return (
