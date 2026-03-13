@@ -314,7 +314,7 @@ export default function AdminPage() {
 
   async function crearAdmin(e) {
     e.preventDefault();
-    if (!permisosActivos.admins) return;
+    if (!esSuperadmin(permisos, adminRole)) return;
     
     setCreandoAdmin(true);
     setMensajeCrearAdmin({ type: "", text: "" });
@@ -1127,7 +1127,7 @@ export default function AdminPage() {
 
           {activeTab === "admins" && (
             <div className="admins-section">
-              {permisosActivos.admins && (
+              {esSuperadmin(permisos, adminRole) && (
                 <div style={{ marginBottom: "2rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
                     <h3>Administradores del Sistema</h3>
@@ -1151,7 +1151,7 @@ export default function AdminPage() {
                           <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Rol</label>
                           <select value={nuevoAdminRol} onChange={(e) => setNuevoAdminRol(e.target.value)} className="form-input">
                             <option value="admin">Admin</option>
-                            <option value="superadmin">Superadmin</option>
+                            {esSuperadmin(permisos, adminRole) && <option value="superadmin">Superadmin</option>}
                           </select>
                         </div>
                         <button type="submit" disabled={creandoAdmin} className="btn btn-primary">
