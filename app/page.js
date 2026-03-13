@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import Navigation from "../components/Navigation";
 import AgendaTurnos from "../components/AgendaTurnos";
 import RegistroEmpresa from "../components/RegistroEmpresa";
@@ -9,6 +9,7 @@ export default function Home() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [proveedor, setProveedor] = useState(null);
+  const [proveedorInactivo, setProveedorInactivo] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -17,22 +18,71 @@ export default function Home() {
   const [isRegister, setIsRegister] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
   const [activeTab, setActiveTab] = useState("agenda");
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  async function cargarProveedor(userEmail) {
+  async function cargarProveedor(userId, userEmail) {
+    if (!supabase) return;
     const { data } = await supabase
       .from("proveedores")
       .select("*")
-      .eq("email", userEmail)
+      .eq("usuario_id", userId)
       .single();
-    setProveedor(data || null);
+    
+    if (!data) {
+      const { data: byEmail } = await supabase
+        .from("proveedores")
+        .select("*")
+        .eq("email", userEmail)
+        .single();
+      
+      if (byEmail && !byEmail.activo) {
+        setProveedorInactivo(true);
+        setProveedor(null);
+      } else {
+        setProveedor(byEmail || null);
+        setProveedorInactivo(false);
+      }
+    } else {
+      if (!data.activo) {
+        setProveedorInactivo(true);
+        setProveedor(null);
+      } else {
+        setProveedor(data);
+        setProveedorInactivo(false);
+      }
+    }
     setLoading(false);
   }
 
+  async function verificarAdmin(userId) {
+    if (!supabase || !userId) {
+      setIsAdmin(false);
+      return;
+    }
+    const { data } = await supabase
+      .from("admins")
+      .select("rol")
+      .eq("usuario_id", userId)
+      .eq("activo", true)
+      .maybeSingle();
+    
+    if (data && (data.rol === 'admin' || data.rol === 'superadmin')) {
+      setIsAdmin(true);
+    } else {
+      setIsAdmin(false);
+    }
+  }
+
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       if (s) {
-        cargarProveedor(s.user.email);
+        cargarProveedor(s.user.id, s.user.email);
+        verificarAdmin(s.user.id);
       } else {
         setLoading(false);
       }
@@ -41,7 +91,8 @@ export default function Home() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       if (s) {
-        cargarProveedor(s.user.email);
+        cargarProveedor(s.user.id, s.user.email);
+        verificarAdmin(s.user.id);
       } else {
         setProveedor(null);
         setLoading(false);
@@ -63,18 +114,30 @@ export default function Home() {
       return;
     }
 
+    if (!supabase) {
+      setError("Supabase no está configurado. Contacta al administrador.");
+      setAuthLoading(false);
+      return;
+    }
+
     if (isRegister) {
-      const { error: signUpError } = await supabase.auth.signUp({ email, password });
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
       if (signUpError) {
         setError(signUpError.message);
-      } else {
-        setSuccess("Cuenta creada. Ya puedes iniciar sesion.");
+      } else if (signUpData?.user) {
+        await supabase.from("proveedores").insert({
+          usuario_id: signUpData.user.id,
+          email: email,
+          empresa: email.split('@')[0],
+          activo: false
+        });
+        setSuccess("Cuenta creada. Pendiente de aprobación. Contacta al administrador.");
         setIsRegister(false);
       }
     } else {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
-        setError(signInError.message);
+        setError("Usuario o contraseña incorrectos");
       }
     }
 
@@ -93,6 +156,12 @@ export default function Home() {
       return;
     }
 
+    if (!supabase) {
+      setError("Supabase no está configurado. Contacta al administrador.");
+      setAuthLoading(false);
+      return;
+    }
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/actualizar-contrasena`,
     });
@@ -107,6 +176,8 @@ export default function Home() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
+    setProveedor(null);
+    setProveedorInactivo(false);
   }
 
   if (loading) {
@@ -143,7 +214,7 @@ export default function Home() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="form-input"
-                  placeholder="tu@email.com"
+                  placeholder="Digita tu correo electrónico"
                   autoComplete="email"
                 />
               </div>
@@ -163,7 +234,7 @@ export default function Home() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="form-input"
-                  placeholder="tu@email.com"
+                  placeholder="Digita tu correo electrónico"
                   autoComplete="email"
                 />
               </div>
@@ -183,7 +254,7 @@ export default function Home() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="form-input"
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Digita tu contraseña mínimo 6 caracteres"
                   autoComplete="current-password"
                   minLength={6}
                 />
@@ -233,7 +304,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-main)' }}>
-      <Navigation session={session} onLogout={handleLogout} />
+      <Navigation session={session} onLogout={handleLogout} isAdmin={isAdmin} />
 
       <main className="main-content">
         <div className="admin-tabs">
@@ -253,14 +324,19 @@ export default function Home() {
 
         {activeTab === "agenda" && (
           <>
-            {!proveedor && (
+            {proveedorInactivo && (
+              <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                Tu cuenta está pendiente de aprobación. Contacta al administrador para activar tu acceso.
+              </div>
+            )}
+            {!proveedor && !proveedorInactivo && (
               <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
                 Primero completa los datos de tu empresa para poder agendar.{" "}
                 <span
                   onClick={() => setActiveTab("empresa")}
                   className="auth-link"
                 >
-                  Ir a Mi Empresa →
+                  Ir a Mi Empresa
                 </span>
               </div>
             )}

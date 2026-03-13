@@ -5,7 +5,9 @@ import { supabaseConfig } from "../../lib/config";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-const supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey);
+const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
+  ? createClient(supabaseConfig.url, supabaseConfig.anonKey)
+  : null;
 
 export default function AdminLogin() {
   const [email, setEmail] = useState("");
@@ -29,11 +31,10 @@ export default function AdminLogin() {
       return;
     }
 
-    // Intentar login primero
+
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {
-      // Login falló - intentar registro
       if (isRegister) {
         const { error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) {
@@ -41,7 +42,6 @@ export default function AdminLogin() {
           setLoading(false);
           return;
         }
-        // Reintentar login después de registro
         const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
         if (loginError) {
           setError(loginError.message);
@@ -55,7 +55,6 @@ export default function AdminLogin() {
       }
     }
 
-    // Obtener usuario actual
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
@@ -64,7 +63,6 @@ export default function AdminLogin() {
       return;
     }
 
-    // Verificar si ya es admin
     const { data: adminExistente } = await supabase
       .from("admins")
       .select("id, activo, rol")
@@ -72,18 +70,42 @@ export default function AdminLogin() {
       .single();
 
     if (!adminExistente) {
-      // Primer admin - crear como superadmin
+      const { count } = await supabase
+        .from("admins")
+        .select("*", { count: "exact", head: true })
+        .eq("rol", "superadmin")
+        .eq("activo", true);
+
+      let nuevoRol = "admin";
+      let nuevoActivo = false;
+      let permisosDefault = '{"ver": ["turnos"], "editar": []}';
+
+      if (count === 0) {
+        nuevoRol = "superadmin";
+        nuevoActivo = true;
+        permisosDefault = '{"ver": ["turnos", "configuracion", "admins", "checkin", "ingresos", "kpis"], "editar": ["turnos", "configuracion", "admins", "checkin", "ingresos", "kpis"]}';
+      }
+
       await supabase.from("admins").insert({
         usuario_id: user.id,
         nombre: nombre || email.split('@')[0],
         email: email,
-        rol: "superadmin",
-        activo: true
+        rol: nuevoRol,
+        activo: nuevoActivo,
+        permisos: permisosDefault
       });
-      setSuccess("¡Cuenta de SuperAdmin creada!");
-      router.push("/admin");
-      setLoading(false);
-      return;
+
+      if (nuevoActivo) {
+        setSuccess("¡Cuenta de SuperAdmin creada!");
+        router.push("/admin");
+        setLoading(false);
+        return;
+      } else {
+        setError("Tu cuenta ha sido creada pero está pendiente de aprobación. Contacta al administrador.");
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
     }
 
     if (!adminExistente.activo) {
@@ -92,8 +114,6 @@ export default function AdminLogin() {
       setLoading(false);
       return;
     }
-
-    // Login exitoso
     router.push("/admin");
     setLoading(false);
   }
@@ -171,7 +191,7 @@ export default function AdminLogin() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="form-input"
-              placeholder="tu@email.com"
+              placeholder="Digita tu correo electrónico"
             />
           </div>
 
@@ -182,7 +202,7 @@ export default function AdminLogin() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="form-input"
-              placeholder="••••••••"
+              placeholder="Digita tu contraseña mínimo 6 caracteres"
             />
           </div>
 

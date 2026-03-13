@@ -2,7 +2,7 @@ export function generarTurnos() {
   const turnos = [];
   const inicio = 8 * 60 + 30;
   const fin = 16 * 60 + 30;
-  const intervalo = 45;
+  const intervalo = 30;
 
   for (let t = inicio; t < fin; t += intervalo) {
     const horas = Math.floor(t / 60);
@@ -30,47 +30,46 @@ export function obtenerFechaMinima() {
 }
 
 export function validarAnticipacion(fechaStr) {
-  const fechaSeleccionada = new Date(fechaStr);
-  fechaSeleccionada.setHours(0, 0, 0, 0);
-  
   const ahora = new Date();
   ahora.setHours(0, 0, 0, 0);
-  
-  return fechaSeleccionada >= ahora;
+  const fechaSel = new Date(fechaStr);
+  fechaSel.setHours(0, 0, 0, 0);
+  return fechaSel >= ahora;
 }
 
 export function puedeReservar(fechaStr, horaStr) {
-  const fechaHoraTurno = new Date(`${fechaStr}T${horaStr}:00`);
   const ahora = new Date();
+  const [anio, mes, dia] = fechaStr.split('-');
+  const fechaHoraTurno = new Date(anio, mes - 1, dia, ...horaStr.split(':').map(Number));
   
   const horasRestantes = (fechaHoraTurno - ahora) / (1000 * 60 * 60);
   
-  if (horasRestantes < 12) {
-    return { puede: false, mensaje: "Debe reservar con al menos 12 horas de anticipacion" };
+  if (horasRestantes < 2) {
+    return { puede: false, mensaje: "Debe reservar con al menos 2 horas de anticipacion" };
   }
   
   return { puede: true, mensaje: "" };
 }
 
 export function formatearFecha(fechaStr) {
-  // Parsing date as local date to avoid timezone issues
   const [year, month, day] = fechaStr.split("-").map(Number);
   const fecha = new Date(year, month - 1, day);
   return fecha.toLocaleDateString("es-ES", {
     weekday: "long",
     year: "numeric",
     month: "long",
-    day: "numeric",
+    day: "numeric"
   });
 }
 
 export function formatearFechaCorta(fechaStr) {
+  if (!fechaStr) return "";
   const [year, month, day] = fechaStr.split("-").map(Number);
   const fecha = new Date(year, month - 1, day);
   return fecha.toLocaleDateString("es-ES", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    year: "numeric"
   });
 }
 
@@ -88,30 +87,41 @@ export function generarHoraFin(horaInicio) {
   return `${horaFin.toString().padStart(2, "0")}:${minFin.toString().padStart(2, "0")}`;
 }
 
-export function generarComprobanteHTML(turno, proveedor, productos, indicaciones, recomendaciones) {
-  const productosHTML = productos && productos.length > 0 
+export function generarComprobanteHTML(turno, proveedor, productos, indicaciones, recomendaciones, email) {
+  const productosHTML = productos && productos.length > 0
     ? productos.map(p => `
-        <div class="producto-item">
-          <strong>${p.codigo || 'Sin codigo'}</strong> - ${p.descripcion}<br>
-          Cantidad: ${p.cantidad} | Pallet: ${p.numero_pallet || '-'} | Cajas: ${p.numero_cajas || '-'}
-          ${p.comentario ? `<br>Comentario: ${p.comentario}` : ''}
-        </div>
-      `).join('')
+      <tr>
+        <td>${p.codigo || 'Sin código'}</td>
+        <td>${p.descripcion || '-'}</td>
+        <td style="text-align:center">${p.cantidad || 0}</td>
+      </tr>
+    `).join('')
     : '';
 
   const indicacionesHTML = indicaciones
-    ? `<div class="indicaciones"><h3>Indicaciones del turno:</h3><p>${indicaciones}</p></div>`
-    : "";
+    ? `<div class="indicaciones"><h3>Extras del turno:</h3><p>${indicaciones}</p></div>`
+    : '';
 
   const recomendacionesHTML = recomendaciones
     ? `<div class="indicaciones" style="background:#fef3c7;border-top:1px solid #fde68a"><h3 style="color:#92400e">Recomendaciones generales:</h3><p>${recomendaciones}</p></div>`
-    : "";
+    : '';
+
+  const qrData = turno.id;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrData)}`;
+
+  const fechaGeneracion = new Date().toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Comprobante de Turno</title>
+  <title>Turno</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
@@ -129,19 +139,29 @@ export function generarComprobanteHTML(turno, proveedor, productos, indicaciones
     .productos h3 { font-size: 16px; margin-bottom: 10px; color: #3b82f6; }
     .producto-item { padding: 8px; background: #f8f9fa; margin-bottom: 5px; border-radius: 4px; font-size: 14px; }
     .footer { background: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; }
-    .codigo { font-size: 28px; font-weight: bold; text-align: center; padding: 20px; letter-spacing: 5px; }
+    .codigo-qr { text-align: center; margin-top: 10px; }
+    .codigo { font-size: 28px; font-weight: bold; padding: 4px 0; }
+    .tabla-productos { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+    .tabla-productos th { background: #3b82f6; color: white; padding: 8px; text-align: left; }
+    .tabla-productos td { border: 1px solid #e5e7eb; padding: 6px 8px; }
+    .tabla-productos tr:nth-child(even) { background: #f9fafb; }
+    .qr-section img { width: 110px; height: 110px; margin-top: 4px; }
     @media print { body { padding: 0; } }
   </style>
 </head>
 <body>
   <div class="comprobante">
     <div class="header">
-      <h1>Comprobante de Turno</h1>
+      <h1>Turno</h1>
     </div>
     <div class="content">
       <div class="info-row">
         <span class="info-label">Empresa:</span>
-        <span class="info-value">${proveedor?.empresa || 'No registrado'}</span>
+        <span class="info-value">${proveedor?.empresa || 'No registrado'} ${email ? `(${email})` : ''}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Orden de Compra:</span>
+        <span class="info-value">${turno.orden_compra || "-"}</span>
       </div>
       <div class="info-row">
         <span class="info-label">Fecha:</span>
@@ -160,18 +180,34 @@ export function generarComprobanteHTML(turno, proveedor, productos, indicaciones
         <span class="info-value">${turno.estado?.toUpperCase() || 'RESERVADO'}</span>
       </div>
       ${indicacionesHTML}
-      ${recomendacionesHTML}
       ${productos ? `
       <div class="productos">
-        <h3>Productos/Materiales</h3>
-        ${productosHTML}
+        <h3>Productos / Materiales</h3>
+        <table class="tabla-productos">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Descripción</th>
+              <th style="text-align:center">Cantidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${productosHTML}
+          </tbody>
+        </table>
       </div>
       ` : ''}
-      <div class="codigo">${turno.id?.slice(0, 8).toUpperCase() || 'TURNO001'}</div>
+      <div class="codigo-qr">
+        <div class="codigo">${turno.id?.slice(0, 8).toUpperCase() || 'TURNO001'}</div>
+        <div class="qr-section">
+          <img src="${qrUrl}" alt="QR del turno">
+        </div>
+      </div>
+      ${recomendacionesHTML}
     </div>
     <div class="footer">
-      <p>Presente este comprobante al llegar</p>
-      <p>Generado el ${new Date().toLocaleString('es-ES')}</p>
+      <p>Presente este turno al llegar</p>
+      <p>Generado el ${fechaGeneracion}</p>
     </div>
   </div>
 </body>

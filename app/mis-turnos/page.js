@@ -6,7 +6,9 @@ import { supabaseConfig } from "../../lib/config";
 import { formatearFecha, generarComprobanteHTML } from "../../utils/generarTurnos";
 import Navigation from "../../components/Navigation";
 
-const supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey);
+const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
+  ? createClient(supabaseConfig.url, supabaseConfig.anonKey)
+  : null;
 
 export default function MisTurnos() {
   const [session, setSession] = useState(null);
@@ -14,6 +16,7 @@ export default function MisTurnos() {
   const [turnos, setTurnos] = useState([]);
   const [eliminando, setEliminando] = useState(null);
   const [imprimiendo, setImprimiendo] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const cargarTurnos = useCallback(async (usuarioId) => {
     const { data, error } = await supabase
@@ -21,8 +24,8 @@ export default function MisTurnos() {
       .select("*")
       .eq("usuario_id", usuarioId)
       .neq("estado", "cancelado")
-      .order("fecha", { ascending: false })
-      .order("hora_inicio");
+      .order("fecha", { ascending: true })
+      .order("hora_inicio", { ascending: true });
 
     if (error) {
       setTurnos([]);
@@ -33,11 +36,31 @@ export default function MisTurnos() {
     setLoading(false);
   }, []);
 
+  async function verificarAdmin(userId) {
+    if (!supabase || !userId) {
+      setIsAdmin(false);
+      return;
+    }
+    const { data } = await supabase
+      .from("admins")
+      .select("rol")
+      .eq("usuario_id", userId)
+      .eq("activo", true)
+      .maybeSingle();
+    
+    if (data && (data.rol === 'admin' || data.rol === 'superadmin')) {
+      setIsAdmin(true);
+    } else {
+      setIsAdmin(false);
+    }
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
         cargarTurnos(session.user.id);
+        verificarAdmin(session.user.id);
       } else {
         setLoading(false);
       }
@@ -47,6 +70,7 @@ export default function MisTurnos() {
       setSession(session);
       if (session) {
         cargarTurnos(session.user.id);
+        verificarAdmin(session.user.id);
       } else {
         setLoading(false);
       }
@@ -108,7 +132,39 @@ export default function MisTurnos() {
     }
     setImprimiendo(null);
   }
+  async function handleReagendar(turno) {
+    if (!confirm("¿Deseas reagendar este turno?")) return;
 
+    try {
+
+      const { data: productos } = await supabase
+        .from("turno_productos")
+        .select("*")
+        .eq("turno_id", turno.id);
+        
+      localStorage.setItem(
+        "reagendar_turno",
+        JSON.stringify({
+          productos: productos || [],
+          ordenCompra: turno.orden_compra || "",
+          indicaciones: turno.indicaciones || ""
+        })
+      );
+
+      localStorage.setItem("reagendar_turno_id", turno.id);
+
+      await supabase.from("turno_productos").delete().eq("turno_id", turno.id);
+      await supabase.from("turno_archivos").delete().eq("turno_id", turno.id);
+      await supabase.from("turnos").delete().eq("id", turno.id);
+
+
+      window.location.href = "/?reagendar=1";
+
+    } catch (error) {
+      console.error(error);
+      alert("Error al reagendar el turno");
+    }
+  }
   async function handleLogout() {
     await supabase.auth.signOut();
   }
@@ -140,7 +196,7 @@ export default function MisTurnos() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-main)' }}>
-      <Navigation session={session} onLogout={handleLogout} />
+      <Navigation session={session} onLogout={handleLogout} isAdmin={isAdmin} />
       
       <main className="main-content">
         <div className="card">
@@ -180,15 +236,27 @@ export default function MisTurnos() {
                           </div>
                         </div>
                         <div className="turno-item-actions">
-                          {turno.estado === 'confirmado' ? (
-                            <span className="turno-status-badge" style={{ background: 'var(--success)', color: '#fff' }}>Confirmado</span>
-                          ) : turno.estado === 'atrasado' ? (
-                            <span className="turno-status-badge" style={{ background: 'var(--danger)', color: '#fff' }}>Atrasado</span>
-                          ) : turno.estado === 'asignado' || turno.estado === 'reservado' ? (
-                            <span className="turno-status-badge" style={{ background: 'var(--primary)', color: '#fff' }}>
-                              {turno.estado.charAt(0).toUpperCase() + turno.estado.slice(1)}
-                            </span>
-                          ) : null}
+                            {turno.estado === 'confirmado' ? (
+                              <span className="turno-status-badge" style={{ background: 'var(--success)', color: '#fff' }}>
+                                Confirmado
+                              </span>
+
+                            ) : turno.estado === 'atrasado' ? (
+                              <span className="turno-status-badge" style={{ background: 'var(--danger)', color: '#fff' }}>
+                                Atrasado
+                              </span>
+
+                            ) : turno.estado === 'asignado' ? (
+                              <span className="turno-status-badge" style={{ background: 'var(--warning)', color: '#fff' }}>
+                                Asignado
+                              </span>
+
+                            ) : turno.estado === 'reservado' ? (
+                              <span className="turno-status-badge" style={{ background: 'var(--primary)', color: '#fff' }}>
+                                Reservado
+                              </span>
+
+                            ) : null}
 
                           <button
                             onClick={() => handleReimprimir(turno)}
@@ -196,19 +264,15 @@ export default function MisTurnos() {
                             className="btn btn-sm btn-secondary"
                             style={{ marginRight: '0.5rem', marginLeft: '0.5rem' }}
                           >
-                            {imprimiendo === turno.id ? "Generando..." : "Comprobante"}
+                            {imprimiendo === turno.id ? "Generando..." : "Imprimir Turno"}
                           </button>
 
                           {turno.estado !== 'confirmado' && turno.estado !== 'atrasado' && turno.estado !== 'asignado' && turno.estado !== 'reservado' && (
                             <>
                               <button
-                                onClick={() => {
-                                  if (confirm('¿Deseas reagendar este turno?')) {
-                                    window.location.href = '/?reagendar=' + turno.id;
-                                  }
-                                }}
-                                className="btn btn-sm btn-secondary"
-                                style={{ marginRight: '0.5rem' }}
+                              onClick={() => handleReagendar(turno)}
+                              className="btn btn-sm btn-secondary"
+                              style={{ marginRight: "0.5rem" }}
                               >
                                 Reagendar
                               </button>
@@ -252,7 +316,7 @@ export default function MisTurnos() {
                             disabled={imprimiendo === turno.id}
                             className="btn btn-sm btn-secondary"
                           >
-                            {imprimiendo === turno.id ? "Generando..." : "Comprobante"}
+                            {imprimiendo === turno.id ? "Generando..." : "Imprimir Turno"}
                           </button>
                         </div>
                       </div>

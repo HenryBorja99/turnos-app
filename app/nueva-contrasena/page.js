@@ -4,7 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseConfig } from "../../lib/config";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey);
+const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
+  ? createClient(supabaseConfig.url, supabaseConfig.anonKey)
+  : null;
 
 export default function NuevaContrasena() {
   const [password, setPassword] = useState("");
