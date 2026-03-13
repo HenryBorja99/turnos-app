@@ -1,11 +1,16 @@
 "use client";
 import { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { useRouter } from "next/navigation";
 import Navigation from "../components/Navigation";
+import { useInactivityWarning } from "../hooks/useInactivityTimeout";
+import { loginRateLimiter, checkRateLimit } from "../lib/rateLimiter";
+import { getCsrfToken, validateCsrfToken } from "../lib/csrf";
 import AgendaTurnos from "../components/AgendaTurnos";
 import RegistroEmpresa from "../components/RegistroEmpresa";
 
 export default function Home() {
+  const router = useRouter();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [proveedor, setProveedor] = useState(null);
@@ -19,6 +24,16 @@ export default function Home() {
   const [isRecovering, setIsRecovering] = useState(false);
   const [activeTab, setActiveTab] = useState("agenda");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [csrfToken, setCsrfToken] = useState("");
+
+  useEffect(() => {
+    setCsrfToken(getCsrfToken());
+  }, []);
+
+  useInactivityWarning(async () => {
+    await supabase.auth.signOut();
+    router.push("/?timeout=true");
+  }, 15 * 60 * 1000);
 
   async function cargarProveedor(userId, userEmail) {
     if (!supabase) return;
@@ -104,6 +119,22 @@ export default function Home() {
 
   async function handleAuth(e) {
     e.preventDefault();
+    
+    const rateCheck = checkRateLimit(loginRateLimiter, email);
+    if (rateCheck.blocked) {
+      setError(`Demasiados intentos. Espera ${rateCheck.remaining} segundos.`);
+      setAuthLoading(false);
+      return;
+    }
+    
+    const formData = new FormData(e.target);
+    const submittedCsrf = formData.get('csrf_token');
+    if (!validateCsrfToken(submittedCsrf)) {
+      setError("Token de seguridad inválido. Recarga la página.");
+      setAuthLoading(false);
+      return;
+    }
+    
     setError("");
     setSuccess("");
     setAuthLoading(true);
@@ -156,6 +187,14 @@ export default function Home() {
       return;
     }
 
+    const formData = new FormData(e.target);
+    const submittedCsrf = formData.get('csrf_token');
+    if (!validateCsrfToken(submittedCsrf)) {
+      setError("Token de seguridad inválido. Recarga la página.");
+      setAuthLoading(false);
+      return;
+    }
+
     if (!supabase) {
       setError("Supabase no está configurado. Contacta al administrador.");
       setAuthLoading(false);
@@ -163,7 +202,7 @@ export default function Home() {
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/actualizar-contrasena`,
+      redirectTo: `${window.location.origin}/nueva-contrasena`,
     });
 
     if (error) {
@@ -206,6 +245,7 @@ export default function Home() {
 
           {isRecovering ? (
             <form onSubmit={handleResetPassword} className="auth-form">
+              <input type="hidden" name="csrf_token" value={csrfToken} />
               <div className="form-group">
                 <label className="form-label">Email</label>
                 <input
@@ -226,6 +266,7 @@ export default function Home() {
             </form>
           ) : (
             <form onSubmit={handleAuth} className="auth-form">
+              <input type="hidden" name="csrf_token" value={csrfToken} />
               <div className="form-group">
                 <label className="form-label">Email</label>
                 <input

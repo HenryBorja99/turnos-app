@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseConfig } from "../../lib/config";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -8,13 +8,30 @@ const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
   ? createClient(supabaseConfig.url, supabaseConfig.anonKey)
   : null;
 
-export default function NuevaContrasena() {
+function NuevaContrasenaContent() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [validating, setValidating] = useState(true);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tokenHash = searchParams.get('token_hash');
+  const type = searchParams.get('type');
+
+  useEffect(() => {
+    async function validateToken() {
+      if (type === 'recovery' && tokenHash) {
+        const { data, error } = await supabase.auth.getSession();
+        if (!data.session && !error) {
+          setError("El enlace ha expirado. Solicita uno nuevo desde la página de login.");
+        }
+      }
+      setValidating(false);
+    }
+    validateToken();
+  }, [tokenHash, type]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -51,6 +68,14 @@ export default function NuevaContrasena() {
     setLoading(false);
   }
 
+  if (validating) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-main)' }}>
+        <div className="spinner"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -64,6 +89,14 @@ export default function NuevaContrasena() {
           <p className="auth-subtitle">Ingresa tu nueva contrasena</p>
         </div>
 
+        {error ? (
+          <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+            {error}
+            <div style={{ marginTop: '1rem' }}>
+              <a href="/" className="auth-link">Volver al inicio</a>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <label className="form-label">Nueva Contrasena</label>
@@ -98,11 +131,28 @@ export default function NuevaContrasena() {
             {loading ? "Actualizando..." : "Guardar Contrasena"}
           </button>
         </form>
+        )}
 
         <div className="auth-footer">
           <a href="/" className="auth-link">Volver al inicio</a>
         </div>
       </div>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-main)' }}>
+      <div className="spinner"></div>
+    </div>
+  );
+}
+
+export default function NuevaContrasena() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <NuevaContrasenaContent />
+    </Suspense>
   );
 }

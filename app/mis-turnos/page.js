@@ -2,7 +2,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabaseConfig } from "../../lib/config";
+import { useInactivityWarning } from "../../hooks/useInactivityTimeout";
 import { formatearFecha, generarComprobanteHTML } from "../../utils/generarTurnos";
 import Navigation from "../../components/Navigation";
 
@@ -11,12 +13,18 @@ const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
   : null;
 
 export default function MisTurnos() {
+  const router = useRouter();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [turnos, setTurnos] = useState([]);
   const [eliminando, setEliminando] = useState(null);
   const [imprimiendo, setImprimiendo] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  useInactivityWarning(async () => {
+    await supabase.auth.signOut();
+    router.push("/?timeout=true");
+  }, 15 * 60 * 1000);
 
   const cargarTurnos = useCallback(async (usuarioId) => {
     const { data, error } = await supabase

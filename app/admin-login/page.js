@@ -1,15 +1,18 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseConfig } from "../../lib/config";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { loginRateLimiter, checkRateLimit } from "../../lib/rateLimiter";
+import { getCsrfToken, validateCsrfToken } from "../../lib/csrf";
 
 const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
   ? createClient(supabaseConfig.url, supabaseConfig.anonKey)
   : null;
 
 export default function AdminLogin() {
+  const [csrfToken, setCsrfToken] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -19,8 +22,27 @@ export default function AdminLogin() {
   const [nombre, setNombre] = useState("");
   const router = useRouter();
 
+  useEffect(() => {
+    setCsrfToken(getCsrfToken());
+  }, []);
+
   async function handleLogin(e) {
     e.preventDefault();
+    
+    const rateCheck = checkRateLimit(loginRateLimiter, email);
+    if (rateCheck.blocked) {
+      setError(`Demasiados intentos. Espera ${rateCheck.remaining} segundos.`);
+      return;
+    }
+    
+    const formData = new FormData(e.target);
+    const submittedCsrf = formData.get('csrf_token');
+    if (!validateCsrfToken(submittedCsrf)) {
+      setError("Token de seguridad inválido. Recarga la página.");
+      setLoading(false);
+      return;
+    }
+    
     setError("");
     setSuccess("");
     setLoading(true);
@@ -171,6 +193,7 @@ export default function AdminLogin() {
         )}
 
         <form onSubmit={handleLogin}>
+          <input type="hidden" name="csrf_token" value={csrfToken} />
           {isRegister && (
             <div className="form-group">
               <label className="form-label">Nombre</label>

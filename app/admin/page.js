@@ -8,6 +8,7 @@ import Navigation from "../../components/Navigation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QrScanner from "../../components/QrScanner";
+import { useInactivityWarning } from "../../hooks/useInactivityTimeout";
 
 const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
   ? createClient(supabaseConfig.url, supabaseConfig.anonKey)
@@ -63,6 +64,11 @@ export default function AdminPage() {
   const [tablaIngresosActiva, setTablaIngresosActiva] = useState("ingresados");
   
   const [loadingIngresos, setLoadingIngresos] = useState(false);
+
+  useInactivityWarning(async () => {
+    await supabase.auth.signOut();
+    router.push("/admin-login?timeout=true");
+  }, 15 * 60 * 1000);
 
   useEffect(() => {
     async function init() {
