@@ -181,6 +181,18 @@ export default function Home() {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
         setError("Usuario o contraseña incorrectos");
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: adminData } = await supabase
+          .from("admins")
+          .select("rol, activo")
+          .eq("usuario_id", user.id)
+          .maybeSingle();
+        
+        if (adminData && adminData.activo) {
+          router.push("/admin");
+          return;
+        }
       }
     }
 
