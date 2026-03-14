@@ -351,6 +351,10 @@ export default function AdminLogin() {
             ← Volver al sistema de turnos
           </Link>
         </div>
+
+        <div style={{ marginTop: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+          © {new Date().getFullYear()} Henry Borja - Todos los derechos reservados
+        </div>
       </div>
     </div>
   );

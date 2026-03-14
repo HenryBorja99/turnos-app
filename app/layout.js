@@ -18,11 +18,21 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <footer style={{ 
+          textAlign: "center", 
+          padding: "1rem", 
+          marginTop: "2rem",
+          color: "var(--text-muted)",
+          fontSize: "0.8rem",
+          borderTop: "1px solid var(--border)"
+        }}>
+          © {new Date().getFullYear()} Henry Borja - Todos los derechos reservados
+        </footer>
       </body>
     </html>
   );

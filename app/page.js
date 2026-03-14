@@ -357,6 +357,10 @@ export default function Home() {
               </p>
             )}
           </div>
+
+          <div style={{ marginTop: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+            © {new Date().getFullYear()} Henry Borja - Todos los derechos reservados
+          </div>
         </div>
       </div>
     );
