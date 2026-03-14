@@ -84,7 +84,7 @@ export default function RegistroEmpresa({ session, proveedorActual, onActualizad
           </div>
 
           <div className="form-group">
-            <label className="form-label">RUT / Identificación</label>
+            <label className="form-label">RUC / Identificación</label>
             <input
               type="text"
               name="rut"

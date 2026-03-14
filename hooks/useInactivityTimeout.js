@@ -2,7 +2,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-const INACTIVITY_TIMEOUT = 15 * 60 * 1000;
+export const INACTIVITY_TIMEOUT = 15 * 60 * 1000;
 
 export function useInactivityTimeout(onTimeout, timeout = INACTIVITY_TIMEOUT) {
   const router = useRouter();
@@ -65,13 +65,17 @@ export function useInactivityWarning(onTimeout, timeout = INACTIVITY_TIMEOUT) {
 
     warningRef.current = setTimeout(() => {
       showWarningRef.current = true;
-      const remaining = Math.ceil(timeout / 1000 / 60);
-      if (confirm(`Sesión por expirar en ${remaining} minutos. ¿Deseas seguir conectado?`)) {
+
+      const elapsed = Date.now() - lastActivityRef.current;
+      const remaining = Math.max(0, Math.ceil((timeout - elapsed) / 1000));
+
+      if (confirm(`Sesión por expirar en ${remaining} segundos. ¿Deseas seguir conectado?`)) {
         resetTimer();
       } else {
         if (onTimeout) onTimeout();
         else router.push("/admin-login?timeout=true");
       }
+
       showWarningRef.current = false;
     }, timeout - 60000);
 

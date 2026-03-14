@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import Navigation from "../components/Navigation";
-import { useInactivityWarning } from "../hooks/useInactivityTimeout";
+import { useInactivityWarning, INACTIVITY_TIMEOUT } from "../hooks/useInactivityTimeout";
 import { loginRateLimiter, checkRateLimit } from "../lib/rateLimiter";
 import { getCsrfToken, validateCsrfToken } from "../lib/csrf";
 import AgendaTurnos from "../components/AgendaTurnos";
@@ -33,7 +33,7 @@ export default function Home() {
   useInactivityWarning(async () => {
     await supabase.auth.signOut();
     router.push("/?timeout=true");
-  }, 15 * 60 * 1000);
+  }, INACTIVITY_TIMEOUT);
 
   async function cargarProveedor(userId, userEmail) {
     if (!supabase) return;
@@ -174,7 +174,7 @@ export default function Home() {
           empresa: email.split('@')[0],
           activo: false
         });
-        setSuccess("Cuenta creada. Pendiente de aprobación. Contacta al administrador.");
+        setSuccess("Cuenta creada. Pendiente de aprobación. Revisar su bandeja de correo.");
         setIsRegister(false);
       }
     } else {
@@ -386,7 +386,7 @@ export default function Home() {
           <>
             {proveedorInactivo && (
               <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
-                Tu cuenta está pendiente de aprobación. Contacta al administrador para activar tu acceso.
+                Tu cuenta está pendiente de aprobación. Revisa tu bandeja de correo para más detalles.
               </div>
             )}
             {!proveedor && !proveedorInactivo && (

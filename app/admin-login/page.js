@@ -153,7 +153,7 @@ export default function AdminLogin() {
         setLoading(false);
         return;
       } else {
-        setError("Tu cuenta ha sido creada pero está pendiente de aprobación. Contacta al administrador.");
+        setError("Tu cuenta ha sido creada pero está pendiente de aprobación. Revisa tu bandeja de correo.");
         await supabase.auth.signOut();
         setLoading(false);
         return;
@@ -161,7 +161,7 @@ export default function AdminLogin() {
     }
 
     if (!adminExistente.activo) {
-      setError("Tu cuenta aun no ha sido aprobada. Contacta al administrador.");
+      setError("Tu cuenta aun no ha sido aprobada.");
       await supabase.auth.signOut();
       setLoading(false);
       return;

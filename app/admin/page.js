@@ -8,7 +8,7 @@ import Navigation from "../../components/Navigation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QrScanner from "../../components/QrScanner";
-import { useInactivityWarning } from "../../hooks/useInactivityTimeout";
+import { useInactivityWarning, INACTIVITY_TIMEOUT } from "../../hooks/useInactivityTimeout";
 
 const supabase = (supabaseConfig.url && supabaseConfig.url.startsWith('http'))
   ? createClient(supabaseConfig.url, supabaseConfig.anonKey)
@@ -75,7 +75,7 @@ export default function AdminPage() {
   useInactivityWarning(async () => {
     await supabase.auth.signOut();
     router.push("/admin-login?timeout=true");
-  }, 15 * 60 * 1000);
+  }, INACTIVITY_TIMEOUT);
 
   useEffect(() => {
     async function init() {
@@ -344,7 +344,7 @@ export default function AdminPage() {
         return;
       }
 
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: nuevoAdminEmail,
         password: Math.random().toString(36).slice(-8) + "A1!"
       });
@@ -355,15 +355,21 @@ export default function AdminPage() {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const newUser = signUpData?.user;
       
-      if (user) {
+      if (!newUser) {
+        setMensajeCrearAdmin({ type: "error", text: "Error al crear usuario. Verifica que el email sea válido." });
+        setCreandoAdmin(false);
+        return;
+      }
+
+      if (newUser) {
         const permisosDefault = nuevoAdminRol === "superadmin" 
           ? '{"ver": ["turnos", "configuracion", "admins", "checkin", "ingresos", "kpis"], "editar": ["turnos", "configuracion", "admins", "checkin", "ingresos", "kpis"]}'
           : '{"ver": ["turnos"], "editar": ["turnos"]}';
 
         await supabase.from("admins").insert({
-          usuario_id: user.id,
+          usuario_id: newUser.id,
           nombre: nuevoAdminNombre,
           email: nuevoAdminEmail,
           rol: nuevoAdminRol,
@@ -1107,7 +1113,7 @@ export default function AdminPage() {
                 )}
 
                 <div style={{ maxWidth: 400, margin: "1rem auto" }}>
-                  <QrScanner onScan={handleScan} />
+                  <QrScanner onScan={handleScan} pauseAfterScan={true} onResume={() => setScanBloqueado(false)} />
                 </div>
               </div>
             </div>

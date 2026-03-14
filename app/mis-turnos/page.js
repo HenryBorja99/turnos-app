@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseConfig } from "../../lib/config";
-import { useInactivityWarning } from "../../hooks/useInactivityTimeout";
+import { useInactivityWarning, INACTIVITY_TIMEOUT } from "../../hooks/useInactivityTimeout";
 import { formatearFecha, generarComprobanteHTML } from "../../utils/generarTurnos";
 import Navigation from "../../components/Navigation";
 
@@ -24,7 +24,7 @@ export default function MisTurnos() {
   useInactivityWarning(async () => {
     await supabase.auth.signOut();
     router.push("/?timeout=true");
-  }, 15 * 60 * 1000);
+  }, INACTIVITY_TIMEOUT);
 
   const cargarTurnos = useCallback(async (usuarioId) => {
     const { data, error } = await supabase

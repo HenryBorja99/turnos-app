@@ -1,67 +1,74 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 
-export default function QrScanner({ onScan }) {
+export default function QrScanner({ onScan, pauseAfterScan = false, onResume }) {
   const [mensaje, setMensaje] = useState("");
   const [codigoManual, setCodigoManual] = useState("");
   const [mostrarInput, setMostrarInput] = useState(false);
   const [cameraStatus, setCameraStatus] = useState("initializing");
   const [scannerReady, setScannerReady] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const scanningRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    let mounted = true;
+  async function initCamera() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraStatus("not-supported");
+        return;
+      }
 
-    async function initCamera() {
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setCameraStatus("not-supported");
-          return;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         }
+      });
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }
-        });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
 
-        if (!mounted) {
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setScannerReady(true);
-          setCameraStatus("ready");
-          startScanning();
-        }
-      } catch (err) {
-        console.error("Camera error:", err);
-        if (!mounted) return;
-        
-        if (err.name === "NotAllowedError") {
-          setCameraStatus("permission-denied");
-        } else if (err.name === "NotFoundError") {
-          setCameraStatus("not-found");
-        } else {
-          setCameraStatus("error");
-        }
+      streamRef.current = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setScannerReady(true);
+        setCameraStatus("ready");
+        startScanning();
+      }
+    } catch (err) {
+      console.error("Camera error:", err);
+      
+      if (err.name === "NotAllowedError" || err.message?.includes("Permission denied") || err.message?.includes("NotAllowed")) {
+        setCameraStatus("permission-denied");
+      } else if (err.name === "NotFoundError" || err.message?.includes("NotFound")) {
+        setCameraStatus("not-found");
+      } else if (err.message?.includes("Permissions policy") || err.message?.includes("not allowed")) {
+        setCameraStatus("permission-denied");
+      } else {
+        setCameraStatus("error");
       }
     }
+  }
 
+  useEffect(() => {
+    mountedRef.current = true;
     initCamera();
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       scanningRef.current = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -70,7 +77,7 @@ export default function QrScanner({ onScan }) {
   }, []);
 
   useEffect(() => {
-    if (mostrarInput && streamRef.current) {
+    if (mostrarInput && streamRef.current && !isPaused) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
       setScannerReady(false);
@@ -86,7 +93,7 @@ export default function QrScanner({ onScan }) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
     async function scanFrame() {
-      if (!scanningRef.current || video.paused || video.ended) {
+      if (!scanningRef.current || video.paused || video.ended || isPaused) {
         requestAnimationFrame(scanFrame);
         return;
       }
@@ -103,7 +110,7 @@ export default function QrScanner({ onScan }) {
           handleScanResult(code);
         }
       } catch (e) {
-        // Silent fail for scanning errors
+
       }
 
       requestAnimationFrame(scanFrame);
@@ -132,6 +139,14 @@ export default function QrScanner({ onScan }) {
       console.log("Enviando código corto:", codigoCorto);
       onScan(codigoCorto);
       setMensaje("");
+      
+      if (pauseAfterScan) {
+        setIsPaused(true);
+        scanningRef.current = false;
+        if (videoRef.current) {
+          videoRef.current.pause();
+        }
+      }
     }
   };
 
@@ -142,6 +157,11 @@ export default function QrScanner({ onScan }) {
       console.log("Código manual:", codigoCorto);
       onScan(codigoCorto);
       setCodigoManual("");
+      if (pauseAfterScan) {
+        setMostrarInput(false);
+        setIsPaused(true);
+        if (onResume) onResume();
+      }
     }
   };
 
@@ -149,6 +169,7 @@ export default function QrScanner({ onScan }) {
     const newValue = !mostrarInput;
     setMostrarInput(newValue);
     if (!newValue) {
+      setIsPaused(false);
       reiniciarCamara();
     }
   };
@@ -184,10 +205,9 @@ export default function QrScanner({ onScan }) {
 
   const retryCamera = () => {
     setCameraStatus("initializing");
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    window.location.reload();
+    setScannerReady(false);
+    setMostrarInput(false);
+    initCamera();
   };
 
   return (
@@ -204,8 +224,10 @@ export default function QrScanner({ onScan }) {
       }}>
         <video 
           ref={videoRef}
+          autoPlay
           playsInline
           muted
+          allow="camera; microphone"
           style={{ 
             width: "100%", 
             display: cameraStatus === "ready" ? "block" : "none" 
@@ -241,8 +263,10 @@ export default function QrScanner({ onScan }) {
                 <svg style={{ width: 48, height: 48, marginBottom: "1rem", opacity: 0.7 }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
-                <p style={{ marginBottom: "1rem" }}>Permiso de cámara denegado</p>
-                <button onClick={retryCamera} className="btn btn-primary">Permitir Cámara</button>
+                <p style={{ marginBottom: "0.5rem" }}>Permiso de cámara denegado</p>
+                <p style={{ fontSize: "0.8rem", opacity: 0.7, marginBottom: "1rem" }}>Verifica que el sitio tenga permiso para usar la cámara</p>
+                <button onClick={retryCamera} className="btn btn-primary">Intentar de nuevo</button>
+                <button onClick={() => setMostrarInput(true)} className="btn btn-secondary" style={{ marginTop: "0.5rem" }}>Ingresar manualmente</button>
               </>
             )}
             
@@ -278,28 +302,63 @@ export default function QrScanner({ onScan }) {
         )}
 
         {cameraStatus === "ready" && (
-          <div style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: "200px",
-            height: "200px",
-            border: "3px solid rgba(255,255,255,0.8)",
-            borderRadius: "12px",
-            boxShadow: "0 0 0 9999px rgba(0,0,0,0.5)"
-          }}>
+          <div>
             <div style={{
               position: "absolute",
-              top: "-3px",
+              top: "50%",
               left: "50%",
-              transform: "translateX(-50%)",
-              width: "100px",
-              height: "4px",
-              background: "var(--primary)",
-              borderRadius: "2px",
-              animation: "scan 2s ease-in-out infinite"
-            }} />
+              transform: "translate(-50%, -50%)",
+              width: "200px",
+              height: "200px",
+              border: "3px solid rgba(255,255,255,0.8)",
+              borderRadius: "12px",
+              boxShadow: "0 0 0 9999px rgba(0,0,0,0.5)"
+            }}>
+              <div style={{
+                position: "absolute",
+                top: "-3px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: "100px",
+                height: "4px",
+                background: "var(--primary)",
+                borderRadius: "2px",
+                animation: isPaused ? "none" : "scan 2s ease-in-out infinite"
+              }} />
+            </div>
+            {isPaused && (
+              <div style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "rgba(0,0,0,0.8)",
+                padding: "1rem 2rem",
+                borderRadius: "var(--radius)",
+                textAlign: "center"
+              }}>
+                <p style={{ color: "white", marginBottom: "1rem", fontWeight: 600 }}>Escaneo completado</p>
+                <button 
+                  onClick={async () => {
+                    setIsPaused(false);
+                    scanningRef.current = true;
+                    if (videoRef.current && streamRef.current) {
+                      try {
+                        await videoRef.current.play();
+                      } catch (e) {
+                        initCamera();
+                      }
+                    } else {
+                      initCamera();
+                    }
+                    if (onResume) onResume();
+                  }} 
+                  className="btn btn-primary"
+                >
+                  Escanear otro
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
