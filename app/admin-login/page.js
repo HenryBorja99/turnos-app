@@ -353,7 +353,7 @@ export default function AdminLogin() {
         </div>
 
         <div style={{ marginTop: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-          © {new Date().getFullYear()} Henry Borja - Todos los derechos reservados
+          © {new Date().getFullYear()} by Henry Borja
         </div>
       </div>
     </div>

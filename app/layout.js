@@ -31,7 +31,7 @@ export default function RootLayout({ children }) {
           fontSize: "0.8rem",
           borderTop: "1px solid var(--border)"
         }}>
-          © {new Date().getFullYear()} Henry Borja - Todos los derechos reservados
+          © {new Date().getFullYear()} by Henry Borja
         </footer>
       </body>
     </html>
